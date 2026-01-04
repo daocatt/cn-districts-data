@@ -22,7 +22,8 @@
 		]
 	},
 	"vars": {
-		"TENCENT_MAP_KEY": "YOUR_TENCENT_MAP_KEY"
+		"R2_FILE_NAME": "pca-districts.json",
+		"R2_BUCKET_NAME": "cn-districts-data"
 	}
 	/**
 	 * Smart Placement
