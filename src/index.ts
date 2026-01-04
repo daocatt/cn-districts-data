@@ -122,27 +122,45 @@ async function updateDistricts(env: Env, referer: string) {
             throw new Error(`Tencent API Error: ${body.message} (Status: ${body.status})`);
         }
 
-        console.log('[SYNC] Data received, formatting...');
-        const provinces = body.result[0];
+        // 兼容性处理：自动探测省份数组位置
+        let provinces: any[] = [];
+        if (body.result && Array.isArray(body.result)) {
+            // 如果 result[0] 是数组，说明是 2D 数组格式 (Provinces/Cities/Districts)
+            // 如果不是，说明 result 本身就是嵌套后的省份列表
+            provinces = Array.isArray(body.result[0]) ? body.result[0] : body.result;
+        }
 
-        const formatNode = (node: any, level: number): PCANode => {
+        if (!provinces || !Array.isArray(provinces) || provinces.length === 0) {
+            console.error('[SYNC] Result structure:', JSON.stringify(body.result)?.substring(0, 200));
+            throw new Error('无法从 API 响应中找到有效的行政区划数组。');
+        }
+
+        console.log(`[SYNC] Found ${provinces.length} provinces, formatting...`);
+
+        const formatNode = (node: any): PCANode => {
+            const level = node.level;
             let code = node.id;
-            if (level === 0) code = parseInt(node.id.substring(0, 2));
-            else if (level === 1) code = node.id.substring(0, 4);
-            else code = node.id.substring(0, 6);
+
+            if (level === 1) code = parseInt(node.id.substring(0, 2)); // 省
+            else if (level === 2) code = node.id.substring(0, 4);      // 市
+            else if (level === 3) code = node.id.substring(0, 6);      // 区
 
             const formatted: PCANode = {
                 c: code,
                 n: node.fullname
             };
 
-            if (level < 2 && node.children && Array.isArray(node.children) && node.children.length > 0) {
-                formatted.ch = node.children.map((child: any) => formatNode(child, level + 1));
+            const subItems = node.children || node.districts;
+
+            // 只向下递归到区县级 (level < 3)
+            if (level < 3 && subItems && Array.isArray(subItems) && subItems.length > 0) {
+                formatted.ch = subItems.map((child: any) => formatNode(child));
             }
             return formatted;
         };
 
-        const tree = provinces.map((p: any) => formatNode(p, 0));
+        const tree = provinces.map((p: any) => formatNode(p));
+
         const fileName = env.R2_FILE_NAME || 'pca-districts.json';
 
         console.log('[SYNC] Uploading to R2...');
